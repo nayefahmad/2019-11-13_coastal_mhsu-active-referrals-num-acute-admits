@@ -12,16 +12,26 @@
 	--Distinct nursing units for 9 VCH regional acute sites (a combination of admission units and discharge units)
 	drop table if exists #tempDenodoADUnits
 
-	select distinct facility_short_name_at_admit as FacilityShortName, nursing_unit_short_desc_at_admit as NursingUnit, nursing_unit_desc_at_admit as NursingUnitDesc
+	-- admit units 
+	select distinct facility_short_name_at_admit	as FacilityShortName
+		, nursing_unit_short_desc_at_admit			as NursingUnit
+		, nursing_unit_desc_at_admit				as NursingUnitDesc
+	
 	into #tempDenodoADUnits
+	
 	from [pre_publish_analytics].[interface].[admission_discharge_deidentified_vw]
 	where facility_short_name_at_admit in ('VGH', 'UBCH', 'RHS', 'LGH', 'PRGH', 'SSH', 'SGH', 'SPH', 'MSJ')
-	and nursing_unit_short_desc_at_admit not in ('Invalid', 'Not provided')
+		and nursing_unit_short_desc_at_admit not in ('Invalid', 'Not provided')
+	
 	union
-	select distinct facility_short_name_at_disch as FacilityShortName, nursing_unit_short_desc_at_disch as NursingUnit, nursing_unit_desc_at_disch as NursingUnitDesc
+	
+	-- disch units 
+	select distinct facility_short_name_at_disch	as FacilityShortName
+		, nursing_unit_short_desc_at_disch			as NursingUnit
+		, nursing_unit_desc_at_disch				as NursingUnitDesc
 	from [pre_publish_analytics].[interface].[admission_discharge_deidentified_vw]
 	where facility_short_name_at_disch in ('VGH', 'UBCH', 'RHS', 'LGH', 'PRGH', 'SSH', 'SGH', 'SPH', 'MSJ') 
-	and nursing_unit_short_desc_at_disch not in ('Invalid', 'Not provided')
+		and nursing_unit_short_desc_at_disch not in ('Invalid', 'Not provided')
 
 
 	--Add nursing unit classification to Denodo AD units
@@ -38,7 +48,10 @@
 	, IsAcute = 0
 	into #tempDenodoADUnits_Classfication
 	from #tempDenodoADUnits u 
-	left outer join [ADRMart].[Dim].[LocationGrp] g on u.NursingUnit = g.LocationGrpCode and g.LocationGrpSite not in ('PHC') and g.LocationGrpCode not in ('M3W')
+		left outer join [ADRMart].[Dim].[LocationGrp] g 
+			on u.NursingUnit = g.LocationGrpCode 
+			and g.LocationGrpSite not in ('PHC')	
+			and g.LocationGrpCode not in ('M3W')
 	order by u.NursingUnit
 
 	-- fix errror for NSH SSH in dim.LocationGrp
@@ -88,21 +101,28 @@
 	, ref.CommunityRegion
 	, a.[encntr_num] as [AccountNumber]
 	, a.[admit_to_disch_los_elapsed_time_days] as LOS
+	
 	into  #tempMHAAcuteAdmission
+	
 	from CommunityMart.dbo.vwPARISReferral ref
-	left join CommunityMart.[dbo].[vwFiscalPeriods] d on ref.ReferralDate <= d.[FiscalPeriodEndDate] and (ref.DischargeDate >= d.[FiscalPeriodStartDate] or ref.DischargeDate is null)
-	left join [pre_publish_analytics].[interface].[admission_discharge_deidentified_vw] a on ref.PatientID = a.[patient_id] 
-	where ref.[CommunityProgramGroup] in ('Mental Health & Addictions')
-	--and ref.CommunityRegion in ('Coastal Urban', 'Coastal Rural')
-	and d.[FiscalPeriodEndDate] between '2015-04-01' and (select max(ReferralDate) from CommunityMart.dbo.vwPARISReferral)
-	and convert(date, a.[admit_dt_tm]) between d.[FiscalPeriodStartDate] and d.[FiscalPeriodEndDate] 
-	and convert(date, a.[admit_dt_tm]) between ref.ReferralDate and ref.DischargeDate
-	and (a.[facility_short_name_at_admit] in (select distinct FacilityShortName from #tempDenodoADUnits_Classfication)
-		or a.[facility_short_name_at_disch] in (select distinct FacilityShortName from #tempDenodoADUnits_Classfication))
-	and (a.[nursing_unit_short_desc_at_admit] in (select distinct NursingUnit from #tempDenodoADUnits_Classfication where IsAcute = 1)
-		or a.[nursing_unit_short_desc_at_disch] in (select distinct NursingUnit from #tempDenodoADUnits_Classfication where IsAcute = 1)) 
-	--and a.[encntr_num] not in (select distinct AccountNumber from #tempDenodoRHTCU)   
-	and a.[encntr_type_class_grp_at_ad] in ('Inpatient') 
+		left join CommunityMart.[dbo].[vwFiscalPeriods] d 
+			on ref.ReferralDate <= d.[FiscalPeriodEndDate] 
+			and (ref.DischargeDate >= d.[FiscalPeriodStartDate] or ref.DischargeDate is null)
+		left join [pre_publish_analytics].[interface].[admission_discharge_deidentified_vw] a 
+			on ref.PatientID = a.[patient_id] 
+
+	where 1=1 
+		and ref.[CommunityProgramGroup] in ('Mental Health & Addictions')
+		--and ref.CommunityRegion in ('Coastal Urban', 'Coastal Rural')
+		and d.[FiscalPeriodEndDate] between '2015-04-01' and (select max(ReferralDate) from CommunityMart.dbo.vwPARISReferral)
+		and convert(date, a.[admit_dt_tm]) between d.[FiscalPeriodStartDate] and d.[FiscalPeriodEndDate] 
+		and convert(date, a.[admit_dt_tm]) between ref.ReferralDate and ref.DischargeDate
+		and (a.[facility_short_name_at_admit] in (select distinct FacilityShortName from #tempDenodoADUnits_Classfication)
+			or a.[facility_short_name_at_disch] in (select distinct FacilityShortName from #tempDenodoADUnits_Classfication))
+		and (a.[nursing_unit_short_desc_at_admit] in (select distinct NursingUnit from #tempDenodoADUnits_Classfication where IsAcute = 1)
+			or a.[nursing_unit_short_desc_at_disch] in (select distinct NursingUnit from #tempDenodoADUnits_Classfication where IsAcute = 1)) 
+		--and a.[encntr_num] not in (select distinct AccountNumber from #tempDenodoRHTCU)   
+		and a.[encntr_type_class_grp_at_ad] in ('Inpatient') 
 
 
 	select distinct FY, FP, CommunityRegion, count(distinct AccountNumber) as #AdmittedClients, sum(LOS)*1.0/count(distinct AccountNumber) as ALOS 
